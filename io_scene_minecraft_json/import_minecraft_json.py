@@ -5,6 +5,7 @@ import math
 from math import inf
 import bpy
 from mathutils import Vector
+from .transforms import BASIS, rotation_matrix
 
 # direction names for minecraft cube face UVs
 DIRECTIONS = np.array([
@@ -264,16 +265,9 @@ def load(context,
         # get rotation + origin
         rot = e.get("rotation")
         if rot is not None:
-            rot_axis = rot["axis"]
-            rot_angle = rot["angle"] * math.pi / 180
             location = np.array([rot["origin"][2], rot["origin"][0], rot["origin"][1]]) - minecraft_origin
-            
-            if rot_axis == "x":
-                rot_euler = (0.0, rot_angle, 0.0)
-            if rot_axis == "y":
-                rot_euler = (0.0, 0.0, rot_angle)
-            if rot_axis == "z":
-                rot_euler = (rot_angle, 0.0, 0.0)
+            converted = BASIS @ rotation_matrix(rot) @ BASIS.transposed()
+            rot_euler = converted.to_euler('XYZ')
         else:
             # default location to center of mass
             location = 0.5 * (v_min + v_max)
@@ -282,6 +276,9 @@ def load(context,
         # create cube
         bpy.ops.mesh.primitive_cube_add(location=location, rotation=rot_euler)
         obj = bpy.context.active_object
+        if rot is not None:
+            obj.matrix_world = converted.to_4x4()
+            obj.location = location
         mesh = obj.data
         mesh_materials = {} # tex_name => material_index
 
