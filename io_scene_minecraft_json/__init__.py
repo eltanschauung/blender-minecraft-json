@@ -80,7 +80,7 @@ class ExportMinecraftJSON(Operator, ExportHelper):
     selection_only: BoolProperty(
         name="Selection Only",
         description="Export selection",
-        default=False,
+        default=True,
     )
 
     translate_coords: BoolProperty(

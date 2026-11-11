@@ -293,5 +293,7 @@ def load(context,
         obj.select_set(False)
     for obj in objects:
         obj.select_set(True)
+    if objects:
+        context.view_layer.objects.active = objects[0]
     
     return {"FINISHED"}
