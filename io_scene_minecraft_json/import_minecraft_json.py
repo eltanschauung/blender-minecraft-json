@@ -7,6 +7,7 @@ import bpy
 from mathutils import Vector
 from .transforms import BASIS, rotation_matrix
 from .resources import resolve_resource
+from .roundtrip import remember_element, remember_model
 
 # direction names for minecraft cube face UVs
 DIRECTIONS = np.array([
@@ -261,7 +262,7 @@ def load(context,
     # =============================================
     # import geometry, uvs
     # =============================================
-    for i, e in enumerate(elements):
+    for element_index, e in enumerate(elements):
         # get cube min/max
         v_min = np.array([e["from"][2], e["from"][0], e["from"][1]])
         v_max = np.array([e["to"][2], e["to"][0], e["to"][1]])
@@ -385,6 +386,8 @@ def load(context,
         # set name (choose whatever is available or "cube" if no name or comment is given)
         obj.name = e.get("name") or e.get("__comment") or "cube"
 
+        remember_element(obj, e, element_index)
+
         # save created object
         objects.append(obj)
 
@@ -399,10 +402,13 @@ def load(context,
         model_v_min = np.amin(np.append(v_world, model_v_min[...,np.newaxis], axis=1), axis=1)
         model_v_max = np.amax(np.append(v_world, model_v_max[...,np.newaxis], axis=1), axis=1)
 
+    offset = Vector(minecraft_origin)
+
     # model post-processing
     if recenter_to_origin:
         mean = 0.5 * (model_v_min + model_v_max)
         mean = Vector((mean[0], mean[1], mean[2]))
+        offset += mean
         for o in objects:
             o.location = o.location - mean
     
@@ -418,6 +424,7 @@ def load(context,
             col.objects.link(objects[index])
             bpy.context.scene.collection.objects.unlink(objects[index])
     
+    remember_model(context, data, filepath, objects, BASIS.transposed() @ offset)
     context.view_layer.update()
 
     # select newly imported objects

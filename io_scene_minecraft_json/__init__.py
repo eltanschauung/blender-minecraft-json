@@ -8,6 +8,7 @@ from bpy.types import Operator
 from . import export_minecraft_json
 from . import export_minecraft_json_by_bones
 from . import import_minecraft_json
+from . import roundtrip
 
 # reload imported modules
 import importlib
@@ -66,6 +67,14 @@ class ExportMinecraftJSON(Operator, ExportHelper):
         default="*.json",
         options={"HIDDEN"},
         maxlen=255,  # Max internal buffer length, longer would be clamped.
+    )
+
+    model_format: EnumProperty(
+        name="Model Format",
+        description="Modern preserves imported model coordinates, textures and metadata without resizing",
+        items=[('MODERN','Modern 26.3 / Horizon','XYZ rotations and lossless imported-model round trips'),
+               ('LEGACY','Legacy Java / generated colors','Original single-axis, resizing and generated-color exporter')],
+        default='MODERN',
     )
 
     selection_only: BoolProperty(
@@ -158,6 +167,12 @@ class ExportMinecraftJSON(Operator, ExportHelper):
 
     def execute(self, context):
         args = self.as_keywords()
+        if args['model_format']=='MODERN':
+            try:
+                return roundtrip.save(context, **args)
+            except (ValueError, OSError) as error:
+                self.report({'ERROR'}, str(error))
+                return {'CANCELLED'}
         if args["export_bones"] == True or args["export_animation"] == True:
             return export_minecraft_json_by_bones.save(context, **args)
         else:
@@ -188,7 +203,11 @@ class JSON_PT_export_geometry(bpy.types.Panel):
         sfile = context.space_data
         operator = sfile.active_operator
 
+        layout.prop(operator, "model_format")
         layout.prop(operator, "selection_only")
+        if operator.model_format=='MODERN':
+            layout.label(text="Imported coordinates and model metadata are preserved")
+            return
         layout.prop(operator, "translate_coords")
         layout.prop(operator, "rescale_to_max")
         layout.prop(operator, "recenter_to_origin")
@@ -215,6 +234,9 @@ class JSON_PT_export_textures(bpy.types.Panel):
         sfile = context.space_data
         operator = sfile.active_operator
 
+        if operator.model_format == 'MODERN':
+            layout.label(text="Image texture paths and edited UVs are preserved")
+            return
         layout.prop(operator, "texture_folder")
         layout.prop(operator, "texture_filename")
         layout.prop(operator, "export_uvs")
@@ -257,7 +279,7 @@ class JSON_PT_export_animation(bpy.types.Panel):
     def poll(cls, context):
         sfile = context.space_data
         operator = sfile.active_operator
-        return operator.bl_idname == "MINECRAFT_OT_export_json"
+        return operator.bl_idname == "MINECRAFT_OT_export_json" and operator.model_format == 'LEGACY'
 
     def draw(self, context):
         layout = self.layout
