@@ -152,6 +152,7 @@ def remap_groups(groups, indices):
 def save(context, filepath, selection_only=False, decimal_precision=6, minify=False, **kwargs):
     if context.object and context.object.mode=='EDIT':
         context.object.update_from_editmode()
+    context.view_layer.update()
     objects=[o for o in (context.selected_objects if selection_only else context.scene.objects)if o.type=='MESH']
     if not objects:raise ValueError('No cuboid mesh objects to export')
     objects.sort(key=lambda o:(o.get('minecraft_model',''),o.get('minecraft_index',2**31),o.name))

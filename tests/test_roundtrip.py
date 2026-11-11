@@ -39,6 +39,9 @@ objects = sorted((o for o in bpy.context.scene.objects if o.type == 'MESH'),
                  key=lambda o:o['minecraft_index'])
 metadata = json.loads(bpy.data.texts[objects[0]['minecraft_model']].as_string())
 offset = Vector(metadata['offset'])
+vertices = [obj.matrix_world @ vertex.co for obj in objects for vertex in obj.data.vertices]
+center = Vector([(min(v[i] for v in vertices)+max(v[i] for v in vertices))/2 for i in range(3)])
+assert center.length < 1e-5, ('Import was not centered', center)
 
 with tempfile.TemporaryDirectory(prefix='minecraft-json-roundtrip-') as directory:
     output = str(Path(directory)/'exported.json')
@@ -60,8 +63,7 @@ with tempfile.TemporaryDirectory(prefix='minecraft-json-roundtrip-') as director
     # Real Object Mode half-turn, without applying transforms or snapping angles.
     original = [o.matrix_world.copy() for o in objects]
     turn = Matrix.Rotation(math.pi, 4, 'Z')
-    for obj,matrix in zip(objects,original):
-        obj.matrix_world = turn @ matrix
+    bpy.ops.transform.rotate(value=math.pi, orient_axis='Z', center_override=(0,0,0))
     bpy.context.view_layer.update()
     exported = export()
     compare_geometry(source, exported,

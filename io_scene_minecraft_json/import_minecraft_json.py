@@ -252,12 +252,12 @@ def load(context,
         # save created object
         objects.append(obj)
 
-        # ================================
-        # update global model bounding box
-        # ================================
-        # get world coordinates
+    # Evaluate the new transforms once before using matrix_world for centering.
+    # Reading it while setting up objects can otherwise see the previous pivot.
+    context.view_layer.update()
+    for obj in objects:
         mat_world = obj.matrix_world
-        for i, v in enumerate(mesh.vertices):
+        for i, v in enumerate(obj.data.vertices):
             v_world[0:3,i] = mat_world @ v.co
         
         model_v_min = np.amin(np.append(v_world, model_v_min[...,np.newaxis], axis=1), axis=1)
