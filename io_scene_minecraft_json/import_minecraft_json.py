@@ -273,13 +273,18 @@ def load(context,
             location = 0.5 * (v_min + v_max)
             rot_euler = (0.0, 0.0, 0.0)
         
-        # create cube
-        bpy.ops.mesh.primitive_cube_add(location=location, rotation=rot_euler)
-        obj = bpy.context.active_object
+        # Direct data creation avoids a dependency-graph rebuild per voxel.
+        mesh = bpy.data.meshes.new('Minecraft Cuboid')
+        mesh.from_pydata([(x,y,z) for x in (-1,1) for y in (-1,1) for z in (-1,1)], [],
+                         [(0,1,3,2),(4,6,7,5),(0,4,5,1),(2,3,7,6),(0,2,6,4),(1,5,7,3)])
+        mesh.uv_layers.new(name='UVMap')
+        obj = bpy.data.objects.new('cube', mesh)
+        context.scene.collection.objects.link(obj)
+        obj.location = location
+        obj.rotation_euler = rot_euler
         if rot is not None:
             obj.matrix_world = converted.to_4x4()
             obj.location = location
-        mesh = obj.data
         mesh_materials = {} # tex_name => material_index
 
         # center local mesh coordiantes
@@ -409,6 +414,8 @@ def load(context,
             col.objects.link(objects[index])
             bpy.context.scene.collection.objects.unlink(objects[index])
     
+    context.view_layer.update()
+
     # select newly imported objects
     for obj in bpy.context.selected_objects:
         obj.select_set(False)
