@@ -6,6 +6,7 @@ from math import inf
 import bpy
 from mathutils import Vector
 from .transforms import BASIS, rotation_matrix
+from .resources import resolve_resource
 
 # direction names for minecraft cube face UVs
 DIRECTIONS = np.array([
@@ -112,8 +113,10 @@ def create_textured_principled_bsdf(mat_name, tex_path):
             node_tree.links.new(tex_input.outputs[0], bsdf.inputs["Base Color"])
         
         # disable shininess
-        if "Specular" in bsdf.inputs:
-            bsdf.inputs["Specular"].default_value = 0.0
+        specular = bsdf.inputs.get("Specular IOR Level") or bsdf.inputs.get("Specular")
+        if specular is not None:
+            specular.default_value = 0.0
+        bsdf.inputs["Roughness"].default_value = 1.0
     
     return mat
 
@@ -155,10 +158,10 @@ def load(context,
 
         while True:
             # parent path without namespacing, e.g. "minecraft:block/cobblestone" -> "block/cobblestone"
-            parent_path = curr_data["parent"].split(":")[-1]
+            parent_path = curr_data["parent"]
             
             # get parent path
-            filepath_parent = get_full_file_path(filepath_parts, parent_path, merge_point=path_models_merge_point) + ".json"
+            _, filepath_parent = resolve_resource(filepath, parent_path, 'models')
 
             if os.path.exists(filepath_parent):
                 with open(filepath_parent, "r") as f:
@@ -243,9 +246,10 @@ def load(context,
             if tex_path[0] == "#":
                 continue
 
-            tex_path = tex_path.split(":")[-1] # strip out namespace, like "minecraft:block/name"
-            filepath_tex = get_full_file_path(filepath_textures, tex_path, merge_point="textures") + ".png"
-            textures[tex_name] = create_textured_principled_bsdf(tex_name, filepath_tex)
+            canonical, filepath_tex = resolve_resource(filepath, tex_path)
+            textures[tex_name] = create_textured_principled_bsdf(tex_name, str(filepath_tex))
+            textures[tex_name]["minecraft_texture"] = canonical
+            data["textures"][tex_name] = canonical
 
         # map texture aliases
         for tex_name, tex_path in data["textures"].items():
