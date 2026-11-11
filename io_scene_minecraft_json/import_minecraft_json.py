@@ -8,41 +8,7 @@ from mathutils import Vector
 from .transforms import BASIS, rotation_matrix
 from .resources import resolve_resource
 from .roundtrip import remember_element, remember_model
-
-# direction names for minecraft cube face UVs
-DIRECTIONS = np.array([
-    "north",
-    "east",
-    "west",
-    "south",
-    "up",
-    "down",
-])
-
-# normals for minecraft directions in BLENDER world space
-# e.g. blender (-1, 0, 0) is minecraft north (0, 0, -1)
-# shape (f,n,v) = (6,6,3)
-#   f = 6: number of cuboid faces to test
-#   n = 6: number of normal directions
-#   v = 3: vector coordinates (x,y,z)
-DIRECTION_NORMALS = np.array([
-    [-1.,  0.,  0.],
-    [ 0.,  1.,  0.],
-    [ 0., -1.,  0.],
-    [ 1.,  0.,  0.],
-    [ 0.,  0.,  1.],
-    [ 0.,  0., -1.],
-])
-DIRECTION_NORMALS = np.tile(DIRECTION_NORMALS[np.newaxis,...], (6,1,1))
-
-
-def index_of(val, in_list):
-    """Return index of value in in_list"""
-    try:
-        return in_list.index(val)
-    except ValueError:
-        return -1 
-
+from .cuboid_uv import apply_face_data
 
 def merge_dict_properties(dict_original, d):
     """Merge inner dict properties"""
@@ -53,38 +19,6 @@ def merge_dict_properties(dict_original, d):
             dict_original[k] = d[k]
     
     return dict_original
-
-
-def get_full_file_path(filepath_parts, path, merge_point=None):
-    """"Typical path formats in json files are like:
-            "parent": "block/cube",
-            "textures": {
-                "top": "block/top"
-            }
-    This checks in filepath_parts of the blender file,
-    matches the base path, then merges the input path, e.g.
-        path = "block/cube"
-        merge_point = "models"
-        filepath_parts = ["C:", "minecraft", "resources", "models", "block", "cobblestone.json"]
-                                                             |
-                                                     Matched merge point
-        
-        joined parts = ["C:", "minecraft", "resources", "models"] + ["block", "cube"]
-    """
-    path_chunks = os.path.split(path)
-
-    # match base path
-    if merge_point is not None:
-        idx_base_path = index_of(merge_point, filepath_parts)
-    else:
-        idx_base_path = index_of(path_chunks[0], filepath_parts)
-
-    if idx_base_path != -1:
-        # system agnostic path join
-        joined_path = os.path.join(os.sep, filepath_parts[0] + os.sep, *filepath_parts[1:idx_base_path+1], *path.split("/"))
-        return joined_path
-    else:
-        return path # failed
 
 
 def create_textured_principled_bsdf(mat_name, tex_path):
@@ -214,7 +148,6 @@ def load(context,
     
     # re-used buffers for every object
     v_world = np.zeros((3, 8))
-    face_normals = np.zeros((6,1,3))
 
     # =============================================
     # import textures, create map of material name => material
@@ -280,8 +213,11 @@ def load(context,
         
         # Direct data creation avoids a dependency-graph rebuild per voxel.
         mesh = bpy.data.meshes.new('Minecraft Cuboid')
+        face_vertices = {'north':(0,1,3,2), 'south':(4,6,7,5),
+                         'west':(0,4,5,1), 'east':(2,3,7,6),
+                         'down':(0,2,6,4), 'up':(1,5,7,3)}
         mesh.from_pydata([(x,y,z) for x in (-1,1) for y in (-1,1) for z in (-1,1)], [],
-                         [(0,1,3,2),(4,6,7,5),(0,4,5,1),(2,3,7,6),(0,2,6,4),(1,5,7,3)])
+                         [vertices for name,vertices in face_vertices.items() if name in e.get('faces',{})])
         mesh.uv_layers.new(name='UVMap')
         obj = bpy.data.objects.new('cube', mesh)
         context.scene.collection.objects.link(obj)
@@ -290,7 +226,6 @@ def load(context,
         if rot is not None:
             obj.matrix_world = converted.to_4x4()
             obj.location = location
-        mesh_materials = {} # tex_name => material_index
 
         # center local mesh coordiantes
         v_min = v_min - minecraft_origin - location
@@ -306,82 +241,8 @@ def load(context,
         mesh.vertices[6].co[:] = v_max[0], v_max[1], v_min[2]
         mesh.vertices[7].co[:] = v_max[0], v_max[1], v_max[2]
 
-        # set face uvs
-        uv = e.get("faces")
-        if uv is not None:
-            if import_uvs:
-                for i, face in enumerate(mesh.polygons):
-                    face_normals[i,0,0:3] = face.normal
-                
-                # map face normal -> face name
-                # NOTE: this process may not be necessary since new blender
-                # objects are created with the same face normal order,
-                # so could directly map index -> minecraft face name.
-                # keeping this in case the order changes in future
-                face_directions = np.argmax(np.sum(face_normals * DIRECTION_NORMALS, axis=2), axis=1)
-                face_directions = DIRECTIONS[face_directions]
-
-                # set uvs face order in blender loop, determined experimentally
-                uv_layer = mesh.uv_layers.active.data
-                for uv_direction, face in zip(face_directions, mesh.polygons):
-                    face_uv = uv.get(uv_direction)
-                    if face_uv is not None:
-                        if "uv" in face_uv:
-                            # unpack uv coords in minecraft coord space [xmin, ymin, xmax, ymax]
-                            # transform from minecraft [0, 16] space +x,-y space to blender [0,1] +x,+y
-                            face_uv_coords = face_uv["uv"]
-                            xmin = face_uv_coords[0] / 16.0
-                            ymin = 1.0 - face_uv_coords[3] / 16.0
-                            xmax = face_uv_coords[2] / 16.0
-                            ymax = 1.0 - face_uv_coords[1] / 16.0
-                        else:
-                            xmin = 0.0
-                            ymin = 1.0
-                            xmax = 1.0
-                            ymax = 0.0
-                        
-                        # write uv coords based on rotation
-                        k = face.loop_start
-                        if "rotation" not in face_uv or face_uv["rotation"] == 0:
-                            uv_layer[k].uv[0:2] = xmax, ymin
-                            uv_layer[k+1].uv[0:2] = xmax, ymax
-                            uv_layer[k+2].uv[0:2] = xmin, ymax
-                            uv_layer[k+3].uv[0:2] = xmin, ymin
-
-                        elif face_uv["rotation"] == 90:
-                            uv_layer[k].uv[0:2] = xmax, ymax
-                            uv_layer[k+1].uv[0:2] = xmin, ymax
-                            uv_layer[k+2].uv[0:2] = xmin, ymin
-                            uv_layer[k+3].uv[0:2] = xmax, ymin
-
-                        elif face_uv["rotation"] == 180:
-                            uv_layer[k].uv[0:2] = xmin, ymax
-                            uv_layer[k+1].uv[0:2] = xmin, ymin
-                            uv_layer[k+2].uv[0:2] = xmax, ymin
-                            uv_layer[k+3].uv[0:2] = xmax, ymax
-
-                        elif face_uv["rotation"] == 270:
-                            uv_layer[k].uv[0:2] = xmin, ymin
-                            uv_layer[k+1].uv[0:2] = xmax, ymin
-                            uv_layer[k+2].uv[0:2] = xmax, ymax
-                            uv_layer[k+3].uv[0:2] = xmin, ymax
-
-                        else: # invalid rotation, should never occur... do default
-                            uv_layer[k].uv[0:2] = xmax, ymin
-                            uv_layer[k+1].uv[0:2] = xmax, ymax
-                            uv_layer[k+2].uv[0:2] = xmin, ymax
-                            uv_layer[k+3].uv[0:2] = xmin, ymin
-
-                        # assign material
-                        if "texture" in face_uv:
-                            tex_name = face_uv["texture"][1:] # remove the "#" in start
-                            if tex_name in mesh_materials:
-                                face.material_index = mesh_materials[tex_name]
-                            elif tex_name in textures: # need new mapping
-                                idx = len(obj.data.materials)
-                                obj.data.materials.append(textures[tex_name])
-                                mesh_materials[tex_name] = idx
-                                face.material_index = idx
+        mesh.update()
+        apply_face_data(obj, e, textures, import_uvs)
 
         # set name (choose whatever is available or "cube" if no name or comment is given)
         obj.name = e.get("name") or e.get("__comment") or "cube"
