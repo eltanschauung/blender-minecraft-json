@@ -1,12 +1,13 @@
 bl_info = {
     "name": "Minecraft JSON Import/Export",
-    "author": "phonon",
-    "version": (0, 4, 0),
-    "blender": (2, 83, 0),
-    "location": "View3D",
-    "description": "Minecraft JSON import/export",
+    "author": "phonon, eltanschauung",
+    "version": (0, 5, 0),
+    "blender": (5, 2, 0),
+    "location": "File > Import/Export > Minecraft (.json)",
+    "description": "Modern Minecraft / Horizon cuboid JSON and UV editing",
     "warning": "",
-    "tracker_url": "https://github.com/phonon/blender-minecraft-json",
+    "doc_url": "https://github.com/eltanschauung/blender-minecraft-json#readme",
+    "tracker_url": "https://github.com/eltanschauung/blender-minecraft-json/issues",
     "category": "Minecraft",
 }
 

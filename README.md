@@ -1,19 +1,30 @@
 Blender Minecraft JSON Import/Export
 =======================================
-Import/export cuboid geometry between Blender and Minecraft .json model format. The Blender model must follow very specific restrictions for the exporter to work (read **Export Guide** below).
+Fork of [phonon's add-on](https://github.com/phonon/blender-minecraft-json), tested with **Blender 5.2.3 LTS**. Import, edit and export cuboid Minecraft models using modern XYZ element rotations, including Horizon / Lunatic models.
 
-Supports import/export uvs. This addon can export solid material colors packed into an auto-generated image texture (alongside normal textures), so you can mix textures and solid face colors on Blender meshes.
+The default **Modern 26.3 / Horizon** exporter preserves actual object transforms, existing image texture identifiers, edited UVs, omitted faces, display transforms, and imported model metadata. It does not snap rotations or automatically resize the model. The older exporter remains available explicitly as **Legacy Java / generated colors**.
 
-Tested on Blender 2.83, 2.92.
+Modern editing
+---------------------------------------
+1. Use **File > Import > Minecraft (.json)** and choose the model inside its resource pack's `assets/<namespace>/models/` directory. Textures are resolved from the corresponding `assets/<namespace>/textures/` directory. Recoverable bare texture names from Blockbench exports are repaired when the matching local image exists.
+2. The imported cuboids are selected. Rotate them in **Object Mode**; edit UVs in Blender's UV editor. Leave each cuboid as a separate mesh object. One Blender unit equals one JSON model unit (1/16 block).
+3. Use **File > Export > Minecraft (.json)**. Leave **Model Format: Modern 26.3 / Horizon** and **Selection Only** enabled. Export into the original resource pack's models directory (or a copy with the same `assets` layout).
+4. Save texture painting separately to the existing PNG; JSON export writes geometry, UV coordinates and texture references, not image pixels. Save a `.blend` to retain imported model metadata between sessions.
+
+For a half-turn of the entire centered gourd around its vertical axis, set the transform pivot to **3D Cursor**, leave the cursor at `(0,0,0)`, and use **R, Z, 180** in Object Mode. Imported cuboids can retain their original authored rotation pivots, so Median Point may rotate the selection around a different point.
+
+Modern export supports arbitrary XYZ object rotations, positive object scale and rectangular face UVs, including mirrored rectangles and 90-degree UV rotations. It reports an error for unsupported meshes, modifiers, shear or nonrectangular UVs before replacing an existing output. Apply negative scale and recalculate normals before export. A cube must retain its eight cuboid vertices; faces omitted in the JSON remain omitted. Multiple imported models must be exported separately.
+
+**Modern XYZ output targets modern 26.3 models and Horizon.** Use the legacy exporter for consumers that require the old single `axis` / `angle` rotation schema; its restrictions and options are documented below.
 
 
 Installation
 ---------------------------------------
-1. `git clone` or copy this repository into your `scripts/addons` or custom scripts folder.
+1. Clone or copy the add-on into a package directory named `blender_minecraft_json` inside Blender's `scripts/addons` folder. On Linux for Blender 5.2, this is `~/.config/blender/5.2/scripts/addons/blender_minecraft_json/`. That directory must contain this repository's `__init__.py`, `io_scene_minecraft_json/`, and `minecraft_utils/`.
 2. Enable in **Edit > Preferences > Add-ons** (search for *Minecraft JSON Import/Export*)
 
 
-Export Guide 
+Legacy Export Guide
 ---------------------------------------
 - **Only exports cuboid objects** e.g. Object meshes must be rectangular prisms (8 vertices and 6 faces). The local mesh coordinates must be aligned to global XYZ axis. **Do not rotate the mesh vertices in edit mode.**
 - **All cuboids must be separate objects.**
@@ -33,11 +44,11 @@ Export Guide
 Example `.blend` files and generated `.json` models are in **examples** folder.
 
 
-Export Options
+Legacy Export Options
 ---------------------------------------
 |  Option  |  Default   | Description  |
 |----------|------------|------------- |
-| Selection Only | False | If True, export only selected objects|
+| Selection Only | True | If True, export only selected objects|
 | Recenter Coordinates | True | Recenters Blender origin `(0,0,0)` to Minecraft origin `(8,8,8)`|
 | Rescale to Max | True | Rescale exported model so the largest axis fits the 48x48x48 Minecraft model volume.
 | Recenter Model to Origin | True | Recenter model so its center is at the origin.
@@ -61,7 +72,7 @@ Import Options
 | Recenter to Origin | True | Centers model on Blender world origin (overrides translate option) |
 
 
-Minecraft Geometry Restrictions Overview
+Legacy Minecraft Geometry Restrictions Overview
 ---------------------------------------
 Detailed overview: https://minecraft.gamepedia.com/Model
 - Uses a Y-up coordinate system (Blender uses Z-up, exporter handles the conversion).
@@ -70,6 +81,16 @@ Detailed overview: https://minecraft.gamepedia.com/Model
 - Minecraft UV axis is top-left (0, 0) to bottom-right (16, 16) while Blender is bottom-left (0, 0) to top-right (1, 1)  
 - Each face UVs specified as in format [xmin, ymin, xmax, ymax] where each value in range [0, 16]
 
-TODO
+Validation
 ---------------------------------------
-- Collection hierarchy export (currently no nested collections, only immediate collection exported)
+Tests run inside Blender, without changing user preferences or startup files:
+
+```sh
+blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests/test_rotations.py
+blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests/test_resources.py
+blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests/test_workflow.py
+blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests/test_roundtrip.py
+blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests/test_uvs.py
+```
+
+Set `MC_JSON_MODEL=/absolute/path/to/ibuki_gourd_3d.json` for the last two commands to additionally verify the real local gourd. Test outputs use temporary directories; the source JSON, texture and `.blend` files are never overwritten. Coverage includes world-space cuboid geometry, a 180-degree turn, compound rotations, UV orientation and edits, namespace repair, sparse faces, display/group metadata, safe export failure and saved `.blend` persistence. Game assets are not included in this repository.
